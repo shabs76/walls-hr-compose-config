@@ -92,7 +92,8 @@ services:
     networks:
       - walls_net
     depends_on:
-      - app
+      - media_app
+      - hr_app
   certbot:
     image: certbot/certbot:latest
     volumes:
