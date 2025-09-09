@@ -1,0 +1,100 @@
+version: "3.7"
+
+networks:
+  walls_net:
+
+volumes:
+  mariadb:
+  phpmyadmin:
+  certbot:
+
+services:
+  notification_app:
+    image: 081653452993.dkr.ecr.us-east-1.amazonaws.com/wallstz/notifications-services:latest
+    container_name: walls_notifications_app
+    expose:
+      - "1700"  # Expose port 1700 for internal communication
+    env_file:
+      - notifications_config/.env
+    networks:
+      -  walls_net 
+  media_app:
+    image: 081653452993.dkr.ecr.us-east-1.amazonaws.com/wallstz/media-service:latest
+    container_name: walls_media_app
+    expose:
+      - "1500"  # Expose port 1500 for internal communication
+    env_file:
+      - media_config/.env
+    networks:
+      -  walls_net 
+  hr_app:
+    image: 081653452993.dkr.ecr.us-east-1.amazonaws.com/wallstz/hr-services:latest
+    container_name: walls_hr_app
+    expose:
+      - "2400"  # Expose port 2400 for internal communication
+    env_file:
+      - hr_config/.env
+    networks:
+      -  walls_net 
+  mariadb:
+    image: mariadb:latest
+    container_name: walls-maria-server
+    env_file:
+      - .env
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MYSQL_DATABASE}
+      MARIADB_USER: ${MYSQL_USER}
+      MARIADB_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb:/var/lib/mysql/
+      - ./mysql/conf.d:/etc/mysql/conf.d:ro
+    networks:
+      - walls_net
+
+  phpmyadmin:
+    image: phpmyadmin:5.2.1-fpm
+    container_name: walls-phpmyadmin-server
+    environment:
+      PMA_HOST: mariadb
+    volumes:
+      - phpmyadmin:/var/www/html
+    networks:
+      - walls_net
+    depends_on:
+      - mariadb
+
+  nginx:
+    image: nginx:latest
+    container_name: walls-nginx-phpmyadmin-server
+    volumes:
+      - ./db_nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - phpmyadmin:/var/www/html/:ro
+    ports:
+      - "490:80"
+    networks:
+      - walls_net
+    depends_on:
+      - mariadb
+      - phpmyadmin
+  nginx-go:
+    image: nginx:latest
+    container_name: walls-nginx-go
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certbot/www:/var/www/certbot/:ro
+      - ./certbot/conf/:/etc/nginx/ssl/:ro
+    ports:
+      - 80:80
+      - 443:443
+    networks:
+      - walls_net
+    depends_on:
+      - app
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - ./certbot/www/:/var/www/certbot/:rw
+      - ./certbot/conf/:/etc/letsencrypt/:rw
