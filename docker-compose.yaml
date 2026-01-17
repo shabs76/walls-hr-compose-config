@@ -35,7 +35,16 @@ services:
     env_file:
       - hr_config/.env
     networks:
-      -  walls_net 
+      -  walls_net
+  hr_terminal_app:
+    image: 081653452993.dkr.ecr.us-east-1.amazonaws.com/wallstz/hr-terminal:latest
+    container_name: walls_hr_terminal
+    expose:
+      - "4000"
+    env_file:
+      - hr_terminal_config/.env
+    networks:
+      - walls_net
   mariadb:
     image: mariadb:latest
     container_name: walls-maria-server
