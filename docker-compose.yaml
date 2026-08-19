@@ -1,5 +1,3 @@
-version: "3.7"
-
 networks:
   walls_net:
 
@@ -17,7 +15,8 @@ services:
     env_file:
       - notifications_config/.env
     networks:
-      -  walls_net 
+      -  walls_net
+    restart: unless-stopped
   media_app:
     image: 081653452993.dkr.ecr.us-east-1.amazonaws.com/wallstz/media-service:latest
     container_name: walls_media_app
@@ -26,7 +25,8 @@ services:
     env_file:
       - media_config/.env
     networks:
-      -  walls_net 
+      -  walls_net
+    restart: unless-stopped
   hr_app:
     image: 081653452993.dkr.ecr.us-east-1.amazonaws.com/wallstz/hr-services:latest
     container_name: walls_hr_app
@@ -36,6 +36,10 @@ services:
       - hr_config/.env
     networks:
       -  walls_net
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    restart: unless-stopped
   hr_terminal_app:
     image: 081653452993.dkr.ecr.us-east-1.amazonaws.com/wallstz/hr-terminal:latest
     container_name: walls_hr_terminal
@@ -45,6 +49,7 @@ services:
       - hr_terminal_config/.env
     networks:
       - walls_net
+    restart: unless-stopped
   mariadb:
     image: mariadb:latest
     container_name: walls-maria-server
@@ -55,13 +60,20 @@ services:
       MARIADB_DATABASE: ${MYSQL_DATABASE}
       MARIADB_USER: ${MYSQL_USER}
       MARIADB_PASSWORD: ${MYSQL_PASSWORD}
-    ports:
-      - "3306:3306"
+    expose:
+      - "3306"  # Internal only — reachable over walls_net, not published to the host
     volumes:
       - mariadb:/var/lib/mysql/
       - ./mysql/conf.d:/etc/mysql/conf.d:ro
     networks:
       - walls_net
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
   phpmyadmin:
     image: phpmyadmin:5.2.1-fpm
@@ -73,7 +85,9 @@ services:
     networks:
       - walls_net
     depends_on:
-      - mariadb
+      mariadb:
+        condition: service_healthy
+    restart: unless-stopped
 
   nginx:
     image: nginx:latest
@@ -86,8 +100,11 @@ services:
     networks:
       - walls_net
     depends_on:
-      - mariadb
-      - phpmyadmin
+      mariadb:
+        condition: service_healthy
+      phpmyadmin:
+        condition: service_started
+    restart: unless-stopped
   nginx-go:
     image: nginx:latest
     container_name: walls-nginx-go
@@ -101,8 +118,31 @@ services:
     networks:
       - walls_net
     depends_on:
+      # nginx.conf resolves these upstreams by container name at config-load time,
+      # so all three must exist or nginx-go exits with "host not found in upstream"
       - media_app
       - hr_app
+      - hr_terminal_app
+    restart: unless-stopped
+  db_backup:
+    build: ./db_backup
+    container_name: walls-db-backup
+    env_file:
+      - backup_config/.env
+    networks:
+      - walls_net
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    healthcheck:
+      # Goes unhealthy if no backup has succeeded in 13h (backups run every 12h),
+      # so a silently failing backup shows up in `docker compose ps`
+      test: ["CMD-SHELL", "[ $(( $(date +%s) - $(stat -c %Y /var/run/last_backup_success 2>/dev/null || echo 0) )) -lt 46800 ]"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
   certbot:
     image: certbot/certbot:latest
     volumes:
