@@ -137,7 +137,8 @@ services:
     healthcheck:
       # Goes unhealthy if no backup has succeeded in 13h (backups run every 12h),
       # so a silently failing backup shows up in `docker compose ps`
-      test: ["CMD-SHELL", "[ $(( $(date +%s) - $(stat -c %Y /var/run/last_backup_success 2>/dev/null || echo 0) )) -lt 46800 ]"]
+      # $$ escapes the $ so Compose passes it through to the shell instead of interpolating
+      test: ["CMD-SHELL", "[ $$(( $$(date +%s) - $$(stat -c %Y /var/run/last_backup_success 2>/dev/null || echo 0) )) -lt 46800 ]"]
       interval: 5m
       timeout: 10s
       retries: 3
