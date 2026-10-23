@@ -76,7 +76,8 @@ services:
     restart: unless-stopped
 
   phpmyadmin:
-    image: phpmyadmin:5.2.1-fpm
+    # PHP 8.3.36, patched for CVE-2026-109618 / CVE-2026-109619 (PHP2Shell)
+    image: phpmyadmin:5.2.3-fpm@sha256:fdda57e1a17b891fb4846f67d4aff85038cf3179aff86ce5be45f095b946a6e3
     container_name: walls-phpmyadmin-server
     environment:
       PMA_HOST: mariadb
